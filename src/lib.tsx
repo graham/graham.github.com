@@ -1,3 +1,5 @@
+import { global_dispatcher } from "./dispatch";
+
 function ensureValidKeys(state: any, ensureKeys: Array<string>): any {
     var LOADED_KEY = "is_loaded";
     var return_state: any = {};
@@ -24,5 +26,6 @@ function test_lib_working() {
 
 export {
     test_lib_working,
-    ensureValidKeys
+    ensureValidKeys,
+    global_dispatcher
 }

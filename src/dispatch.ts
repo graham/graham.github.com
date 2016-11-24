@@ -56,23 +56,23 @@
    or objects.
 */
 
-function dispatch_object_to_target(_dispatcher:Dispatcher, event:string,
-                                   routing_search:string, payload:any,
-                                   target_fn:any, options:any):any {
-    let sp_event:Array<string> = event.split('.');
-    let sp_search:Array<string> = routing_search.split('.');
+function dispatch_object_to_target(_dispatcher: Dispatcher, event: string,
+    routing_search: string, payload: any,
+    target_fn: any, options: any): any {
+    let sp_event: Array<string> = event.split('.');
+    let sp_search: Array<string> = routing_search.split('.');
     let final_payload = payload;
     let routing_path = [];
     let last_successful_search_part = null;
 
-    for(let index=0; index < sp_search.length; index++) {
+    for (let index = 0; index < sp_search.length; index++) {
         let event_part = sp_event[index];
         let search_part = sp_search[index];
 
         if (event_part == undefined) {
             if (search_part == '*') {
                 let new_routing_root = routing_path.join('.');
-                for(let i in final_payload) {
+                for (let i in final_payload) {
                     let new_routing = new_routing_root + '.' + i;
                     console.log("new event: " + new_routing);
                     _dispatcher.notify(new_routing, final_payload[i]);
@@ -120,10 +120,10 @@ class Dispatcher {
     // but it'll make it so more than one call to the method doesn't
     // wrap the event handler unnessicarily.
     is_capturing_local_storage_events: boolean;
-    
+
     // Name of the function on target objects that will be called
     // whenever we receive a event that object is listening for.
-    function_name:string;
+    function_name: string;
 
     constructor() {
         this.listeners = [];
@@ -138,11 +138,11 @@ class Dispatcher {
     // this calls setState (which is the norm for React).
     listen(routing_key, target, options) {
         this.listeners.push([routing_key,
-                             function() {
-                                 target.setState(arguments[0]);
-                             },
-                             options
-                            ]);
+            function () {
+                target.setState(arguments[0]);
+            },
+            options
+        ]);
     }
 
     // Listen with a custom function callback.
@@ -165,7 +165,7 @@ class Dispatcher {
     // This can be used to reset all of your handlers, or to notify them of some
     // other global change.
     broadcast(event) {
-        for(let obj of this.listeners) {
+        for (let obj of this.listeners) {
             let fn = obj[1];
             fn(event, '_');
         }
@@ -174,10 +174,10 @@ class Dispatcher {
     // Flush will notify any listener that matches a "startswith" comparison
     // Usage in documentation will give more insight into why you might need this.
     flush(event_routing_key, args) {
-        for(let obj of this.listeners) {
+        for (let obj of this.listeners) {
             let fn = obj[1];
             let key = obj[0];
-            if (key.substring( 0, event_routing_key.length ) == event_routing_key) {
+            if (key.substring(0, event_routing_key.length) == event_routing_key) {
                 fn(args, '-');
             }
         }
@@ -206,7 +206,7 @@ class Dispatcher {
             // lets give the UI thread a chance to render
             // and we'll start dispatching again.
             let _this = this;
-            setTimeout(function() {
+            setTimeout(function () {
                 _this.flush_queue();
             }, 5);
         } else {
@@ -219,27 +219,27 @@ class Dispatcher {
 
     // The actual work of dispatching a single event.
     dispatch_event(event_routing_key, args) {
-        let remaining_listeners:Array<any> = [];
+        let remaining_listeners: Array<any> = [];
 
-        for(let row of this.listeners) {
-            let object_routing:string = row[0];
-            let object_target_fn:any = row[1];
-            let object_options:any = row[2];
+        for (let row of this.listeners) {
+            let object_routing: string = row[0];
+            let object_target_fn: any = row[1];
+            let object_options: any = row[2];
 
             try {
                 // Attempt to dispatch, with some extra rules to dig into objects.
                 dispatch_object_to_target(this,
-                                          event_routing_key,
-                                          object_routing,
-                                          args,
-                                          object_target_fn,
-                                          object_options);
+                    event_routing_key,
+                    object_routing,
+                    args,
+                    object_target_fn,
+                    object_options);
 
                 // If we make it here, we didn't throw an exception (or we didn't call fn)
                 remaining_listeners.push(row);
             } catch (e) {
                 console.log('Dropping handler for `' + row[0] + '` on `' +
-                            typeof row[1].constructor + '` because of exception: ' + e);
+                    typeof row[1].constructor + '` because of exception: ' + e);
             }
         }
 
@@ -253,7 +253,7 @@ class Dispatcher {
         let _this = this;
         if (this.is_capturing_local_storage_events) {
             let originalSetItem = localStorage.setItem;
-            localStorage.setItem = function(){
+            localStorage.setItem = function () {
                 originalSetItem.apply(this, arguments);
                 _this.notify(arguments[0], arguments[1]);
             }
@@ -261,7 +261,9 @@ class Dispatcher {
         } else {
             console.log("successive calls to capture_local_storage_changes are ignored.");
         }
-    }    
+    }
 }
 
-export { Dispatcher };
+let global_dispatcher = new Dispatcher();
+
+export { Dispatcher, global_dispatcher };
