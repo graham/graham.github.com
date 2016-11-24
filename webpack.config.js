@@ -5,6 +5,7 @@ module.exports = {
     entry: {
         main: "./src/main",
         home: "./app/home/src/main",
+        simplesearch: "./app/simplesearch/src/main",
 
         vendor: [
             "preact",
