@@ -1,7 +1,9 @@
 import * as React from "react";
-
+import * as debounce from "debounce";
 import { build_fn } from "./text_to_filter_fun";
 import { global_dispatcher } from "myproj-lib";
+
+console.log(debounce);
 
 class TableState {
     query_value: string;
@@ -24,14 +26,17 @@ class SearchableDataTable extends React.Component<TableProps, TableState> {
 
         this.handleChange = this.handleChange.bind(this);
         this.handleSubmit = this.handleSubmit.bind(this);
+
+        //        this.handleChange = debounce(this.handleChange, 100);
     }
 
     handleChange(event) {
-        this.setState({
+        let next_state = {
             query_value: event.target.value,
             items: this.state.items,
             filterFn: build_fn(event.target.value)
-        });
+        };
+        this.setState(next_state);
     }
 
     handleSubmit(event) {
@@ -39,7 +44,7 @@ class SearchableDataTable extends React.Component<TableProps, TableState> {
     }
 
     getVisibleItems(): Array<any> {
-        return this.state.items.filter(this.state.filterFn);
+        return this.state.items.filter(this.state.filterFn).slice(0, 100);
     }
 
     renderRow(item) {
@@ -47,18 +52,17 @@ class SearchableDataTable extends React.Component<TableProps, TableState> {
     }
 
     render() {
+        let visibleItems = this.getVisibleItems().map(this.renderRow);
         return (
             <div>
                 <form onSubmit={this.handleSubmit}>
-                    <label>
-                        Search
-                <input type="text" value={this.state.query_value} onChange={this.handleChange} />
-                    </label>
+                    <label>Search</label>
+                    <input type="text" value={this.state.query_value} onChange={this.handleChange} />
                     <input type="submit" value="Submit" />
+                    <div>{visibleItems.length} of {this.state.items.length} items.</div>
                 </form>
-
                 <table>
-                    {this.getVisibleItems().map(this.renderRow)}
+                    {visibleItems}
                 </table>
             </div>
         );

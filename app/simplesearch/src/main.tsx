@@ -14,7 +14,7 @@ class HelloWorld extends React.Component<{}, HWState> {
 
     render() {
         let docs = [];
-        for (let i = 0; i < 100; i++) { docs.push({ 'fuzzy': 'hello ' + i, num: i }); }
+        for (let i = 0; i < 100000; i++) { docs.push({ 'fuzzy': 'hello ' + i, num: i }); }
         return <SearchableDataTable initDocs={docs} />;
     }
 }
