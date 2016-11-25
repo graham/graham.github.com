@@ -1,6 +1,6 @@
 import * as React from "react";
 import { build_fn } from "./text_to_filter_fun";
-import { global_dispatcher } from "myproj-lib";
+import { global_dispatcher, debounce, mapMerge } from "myproj-lib";
 
 class TableState {
     query_value: string;
@@ -30,10 +30,9 @@ class SearchableDataTable extends React.Component<TableProps, TableState> {
     handleChange(event) {
         let next_state = {
             query_value: event.target.value,
-            items: this.state.items,
             filterFn: build_fn(event.target.value)
         };
-        this.setState(next_state);
+        this.setState(mapMerge(this.state, next_state));
     }
 
     handleSubmit(event) {
