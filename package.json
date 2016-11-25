@@ -13,8 +13,7 @@
   "author": "Graham Abbott <graham.abbott@gmail.com>",
     "dependencies": {
       "preact": "^6.4.0",
-      "preact-compat": "^3.9.1",
-      "debounce":"^1.0.0"
+      "preact-compat": "^3.9.1"
   },
   "devDependencies": {
     "@types/node": "^6.0.46",

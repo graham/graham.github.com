@@ -1,9 +1,6 @@
 import * as React from "react";
-import * as debounce from "debounce";
 import { build_fn } from "./text_to_filter_fun";
 import { global_dispatcher } from "myproj-lib";
-
-console.log(debounce);
 
 class TableState {
     query_value: string;
@@ -27,7 +24,7 @@ class SearchableDataTable extends React.Component<TableProps, TableState> {
         this.handleChange = this.handleChange.bind(this);
         this.handleSubmit = this.handleSubmit.bind(this);
 
-        //        this.handleChange = debounce(this.handleChange, 100);
+        this.handleChange = debounce(this.handleChange, 100);
     }
 
     handleChange(event) {
