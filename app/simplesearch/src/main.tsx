@@ -3,6 +3,7 @@ import * as ReactDOM from "react-dom";
 import { test_lib_working } from "myproj-lib";
 
 import { SearchableDataTable } from "./table";
+import { TokenDataTable } from "./token_table";
 
 class HWState {
 }
@@ -14,8 +15,8 @@ class HelloWorld extends React.Component<{}, HWState> {
 
     render() {
         let docs = [];
-        for (let i = 0; i < 100000; i++) { docs.push({ 'fuzzy': 'hello ' + i, num: i }); }
-        return <SearchableDataTable initDocs={docs} />;
+        for (let i = 0; i < 20; i++) { docs.push({ 'fuzzy': 'hello ' + i, num: i, 'test': function () { return true; } }); }
+        return <SearchableDataTable initDocs={docs} />
     }
 }
 

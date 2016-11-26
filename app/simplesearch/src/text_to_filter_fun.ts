@@ -1,14 +1,3 @@
-/* Todo
-
-   - text to conditions.
-   - conditions to text.
-   - better tokens.
-
-*/
-
-
-
-
 /* 
    text_to_filter takes a simple (gmail like) search string and returns
    a javascript function that accepts one argument, a javascript object,
@@ -30,11 +19,11 @@
    sets that criteria to exclude, '+' or '/' for include (if neither are
    present include is assumed).
  */
+
 enum SearchType {
     Include,
     Exclude
 };
-
 
 /* 
    Cond is the basic building block of all our comparisons, more detail
@@ -45,6 +34,7 @@ enum SearchType {
      key   => queried key.
      value => value of argument
 */
+
 enum Cond {
     Exists,             // item[key] != undefined
     Equal,              // item[key] == value OR item[key](value)
@@ -53,13 +43,20 @@ enum Cond {
     GreaterThan,        // item[key] > value OR item[key](value)
     ArgValueInItemSeq,  // value in item[key]
     ItemValueInArgSeq,  // item[key] in value
-    Fuzzy,              // See implementation.
-
-    ComposeOR,          // Composeable OR
-    ComposeAND,         // Composeable AND
-    ComposeNOT          // Composeable NOT (not yet implemented)
+    Fuzzy               // See implementation.
 };
 
+/* 
+   Composition types are part of every query,
+   determines how the set of conditions will be evaluated.
+*/
+
+enum ComposeType {
+    OR,          // Composeable OR
+    AND,         // Composeable AND
+    NAND,        // Composeable NAND
+    XOR          // Composeable XOR
+};
 
 // Start characters can only be one charater long, may add more here in
 // the future if needed.
@@ -70,12 +67,16 @@ let cond_lookup = {
     '<': Cond.LessThan,
     '~': Cond.Fuzzy,
     '?': Cond.Exists,
-    '$': Cond.ArgValueInItemSeq,
+    '$': Cond.ArgValueInItemSeq
 };
 
+let cond_english_lookup = {};
+for (let key in cond_lookup) {
+    cond_english_lookup[cond_lookup[key]] = key;
+}
 
 // Our cond function lookup.
-let fn_lookup = {};
+let fn_lookup: any = {};
 
 fn_lookup[Cond.Equal] = function (value, arg) {
     return value == arg;
@@ -120,32 +121,12 @@ fn_lookup[Cond.Fuzzy] = function (value, arg) {
     return false;
 };
 
-
-// Evaluate the sub parts.
-fn_lookup[Cond.ComposeOR] = function (value, arg) {
-    for (let [cond, narg] of arg) {
-        if (fn_lookup[cond].apply(this, [value, narg])) {
-            return true;
-        }
-    }
-    return false;
-};
-
-
-// Evaluate the sub parts.
-fn_lookup[Cond.ComposeAND] = function (value, arg) {
-    for (let [cond, narg] of arg) {
-        if (fn_lookup[cond].apply(this, [value, narg]) == false) {
-            return false;
-        }
-    }
-    return true;
-};
-
-
 // Tokenize a search in a way that we feel good about.
-let safe_split = function safe_split(s): Array<any> {
-    var split_char = ' ';
+let safe_split = function safe_split(s: string, split_char: string, strip_block_chars?: boolean): Array<any> {
+    if (strip_block_chars == undefined) {
+        strip_block_chars = false;
+    }
+
     let block_chars = {
         '"': '"',
         "'": "'",
@@ -163,7 +144,9 @@ let safe_split = function safe_split(s): Array<any> {
         var chr = s[i];
         if (in_block) {
             if (chr == block_chars[block_start_char]) {
-                current_word.push(chr);
+                if (!strip_block_chars) {
+                    current_word.push(chr);
+                }
                 in_block = false;
                 block_start_char = null;
             } else {
@@ -178,7 +161,9 @@ let safe_split = function safe_split(s): Array<any> {
                     // we should start a block
                     in_block = true;
                     block_start_char = chr;
-                    current_word.push(chr);
+                    if (!strip_block_chars) {
+                        current_word.push(chr);
+                    }
                 } else {
                     current_word.push(chr);
                 }
@@ -192,108 +177,145 @@ let safe_split = function safe_split(s): Array<any> {
     return partitions;
 };
 
+// Create a set of search tokens given a search query.
+let string_to_search_tokens = function (s: string): Array<any> {
+    let fuzzy_token = [];
+    let final_tokens = [];
+    let init_tokens = safe_split(s, ' ');
 
-// Test to see if our token is a condition or just
-// normal text input. `` grave to escape.
-let is_cond = function (token: string): boolean {
-    if (token.search(':') != -1 && token[0] != '\`') {
-        return true;
-    }
-    return false;
-};
-
-
-// Parse a cond into it's parts, coerce the value if it
-// makes sense.
-let cond_parse = function (arg): Array<any> {
-    let cond = Cond.Equal;
-    let str_starts_with = function (key: string, st: string) {
-        if (key.slice(0, st.length) == st) {
-            return true;
+    for (let tok of init_tokens) {
+        let index = tok.search(':')
+        if (index == -1) {
+            fuzzy_token.push([Cond.Fuzzy, tok]);
         } else {
-            return false;
-        }
-    }
-    for (let key in cond_lookup) {
-        if (str_starts_with(arg, key)) {
-            cond = cond_lookup[key];
-            arg = arg.slice(key.length);
-        }
-    }
-    if (!isNaN(+arg)) {
-        arg = +arg;
-    }
-    if (arg == 't' || arg == 'true') {
-        arg = true;
-    } else if (arg == 'f' || arg == 'false') {
-        arg = false;
-    }
-    return [cond, arg];
-}
-
-
-// Given a set of parsed tokens, build a filter function.
-let build_filter_fn_from_tokens = function (s: any): any {
-    let conditions = [];
-    for (let outer_item of s) {
-        var lambda = (function (enclosed) {
-            return function (item: any) {
-                let addrem = enclosed[0];
-                let fn_cond_enum = enclosed[1];
-                let key = enclosed[2];
-                let arg = enclosed[3];
-                let ret = false;
-                try {
-                    let key_parts = key.split('.');
-                    let value = item;
-                    if (key_parts.length == 1) {
-                        value = value[key];
-                    } else {
-                        for (let part of key_parts) {
-                            if (value[part] == undefined) {
-                                return false;
-                            }
-                            value = value[part];
-                        }
-                    }
-                    if (typeof value == "function") {
-                        if (fn_cond_enum == Cond.Exists) {
-                            ret = true;
-                        } else {
-                            ret = value.apply(item, [arg]);
-                        }
-                    } else if (typeof value == "undefined") {
-                        ret = false;
-                    } else {
-                        ret = fn_lookup[fn_cond_enum](value, arg);
-                    }
-                } catch (e) {
-                    console.log("Exception in cond: ", fn_lookup[fn_cond_enum]);;
-                    // in light of an exception of a condition,
-                    // we will leave things as they are.
-                }
-                if (addrem == SearchType.Include) {
-                    return ret
-                } else if (addrem == SearchType.Exclude) {
-                    return !ret;
-                } else {
-                    console.log("UNKNOWN SEARCH TYPE:", addrem);
-                    return ret;
-                }
-            };
-        })(outer_item);
-        conditions.push(lambda);
-    }
-    return function (item: any, _index: number, _accum: any[]): any {
-        for (let fn of conditions) {
-            if (fn(item) == false) {
-                return false;
+            let key = tok.slice(0, index);
+            let arg_list = safe_split(tok.slice(index + 1), ',', true);
+            let new_token = gen_token_from_key_args(key, arg_list);
+            if (new_token) {
+                final_tokens.push(new_token);
             }
         }
-        return true;
-    };
+    }
+
+    final_tokens.push([SearchType.Include, 'fuzzy', ComposeType.OR, fuzzy_token]);
+
+    return final_tokens;
 };
 
+// Convert a token to something readable by a human.
+let token_to_english = function (token: Array<any>): string {
+    let [addrem, key, compose_type, args] = token;
+    let s = [];
+
+    // Search Type
+    s.push(SearchType[addrem]);
+    s.push(`results where ${key} matches`);
+
+    s.push(args.map(function (arg) {
+        return ' ' + Cond[arg[0]] + ' |' + arg[1] + '| ';
+    }).join(ComposeType[compose_type]));
+
+    return s.join(' ');
+};
+
+// Convert a token back to a safe query value.
+let token_to_query = function (token: Array<any>): string {
+    let [addrem, key, compose_type, args] = token;
+    let s = [];
+
+    if (addrem == SearchType.Include) {
+        //pass
+    } else if (addrem == SearchType.Exclude) {
+        s.push('-');
+    }
+
+    s.push(key);
+    s.push(':');
+
+    if (compose_type == ComposeType.AND) {
+        s.push('&,');
+    }
+
+    s.push(args.map(function (arg) {
+        return "`" + cond_english_lookup[arg[0]] + arg[1] + "`";
+    }).join(','));
+
+    return s.join('');
+};
+
+// Generate a token for a given key and it's arguments.
+let gen_token_from_key_args = function (key: string, arg_list: Array<string>): Array<any> {
+    // Determine if this search is inclusive or exclusive.
+    let addrem = SearchType.Include;
+    let cond = Cond.Equal;
+    let compose_type = ComposeType.OR;
+
+    if (key[0] == '-') {
+        addrem = SearchType.Exclude;
+        key = key.slice(1);
+    } else if (key[0] == '+') {
+        addrem = SearchType.Include;
+        key = key.slice(1);
+    }
+
+    if (arg_list.length == 0) {
+        return null;
+    }
+
+    if (arg_list[0] == '&') {
+        compose_type = ComposeType.AND;
+        arg_list = arg_list.slice(1);
+    }
+
+    let new_arg_list = [];
+
+    for (let arg of arg_list) {
+        let cond = Cond.Equal;
+        let narg: any = arg;
+
+        if (cond_lookup.hasOwnProperty(arg[0])) {
+            cond = cond_lookup[arg[0]];
+            narg = arg.slice(1);
+        }
+
+        if (!isNaN(+narg)) {
+            narg = +narg;
+        }
+        if (narg == 't' || narg == 'true') {
+            narg = true;
+        } else if (narg == 'f' || narg == 'false') {
+            narg = false;
+        }
+
+        new_arg_list.push([cond, narg]);
+    }
+
+    let new_token = [
+        addrem,
+        key,
+        compose_type,
+        new_arg_list
+    ];
+
+    return new_token;
+};
+
+// If a key is referencing nested data, retrieve it.
+let dig_key_value = function (key, value): any {
+    let key_parts = key.split('.');
+
+    if (key_parts.length == 1) {
+        return value[key];
+    } else {
+        for (let part of key_parts) {
+            if (value[part] == undefined) {
+                return undefined;
+            }
+            value = value[part];
+        }
+    }
+    return value;
+}
 
 // Compose a list of tokens and then use the build_filter_fn_from_tokens
 // to create a function for the user to filter with.
@@ -304,58 +326,67 @@ let build_fn = function (q: string, options?: {}): any {
 
     let fuzzy_key = options['fuzzy_key'] || 'fuzzy';
     let macro_map = options['macros'] || {};
-    let final_tokens = [];
-    let basic_tokens = safe_split(q);
 
-    for (let str_token of basic_tokens) {
-        if (is_cond(str_token)) {
-            let addrem = SearchType.Include;
-            let first_char = str_token[0];
-            if (first_char == '-' || first_char == '\\') {
-                addrem = SearchType.Exclude;
-                str_token = str_token.slice(1);
-            } else if (first_char == '/' || first_char == '+') {
-                addrem = SearchType.Include;
-                str_token = str_token.slice(1);
-            }
-            let split = str_token.split(':');
-            let key = split[0];
-            for (let arg of split.slice(1)) {
-                if (arg.length > 0) {
-                    if (macro_map[key] != undefined) {
-                        [key, arg] = macro_map[key](key, arg);
-                    }
-                    if (arg.search(',') == -1) {
-                        let [cond, narg] = cond_parse(arg);
-                        final_tokens.push([addrem, cond, key, narg]);
+    let final_tokens = string_to_search_tokens(q);
+    let condition_fns = [];
+
+    for (let outer_token of final_tokens) {
+        var lambda = function (item: any): boolean {
+            let ret = true;
+            let [addrem, key, compose_type, args] = outer_token;
+            let value = dig_key_value(key, item);
+
+            for (let arg of args) {
+                let fn_cond_enum = arg[0];
+
+                try {
+                    if (typeof value == "function") {
+                        if (fn_cond_enum == Cond.Exists) {
+                            ret = true;
+                        } else {
+                            ret = value.apply(item, [arg[1]]);
+                        }
+                    } else if (typeof value == "undefined") {
+                        ret = false;
                     } else {
-                        let componse_cond = Cond.ComposeOR;
-                        if (arg[0] == '&') {
-                            componse_cond = Cond.ComposeAND;
-                            arg = arg.slice(1);
-                        } else if (arg[0] == '|') {
-                            componse_cond = Cond.ComposeOR;
-                            arg = arg.slice(1);
-                        }
-                        let sub_conds = [];
-                        for (let arg_slice of arg.split(',')) {
-                            let [cond, narg] = cond_parse(arg_slice);
-                            sub_conds.push([cond, narg]);
-                        }
-                        final_tokens.push([addrem, componse_cond, key, sub_conds]);
+                        ret = fn_lookup[fn_cond_enum](value, arg[1]);
                     }
+                } catch (e) {
+                    console.log("Exception in cond: ", fn_lookup[fn_cond_enum]);;
+                    ret = true;
+                }
+
+                if (addrem == SearchType.Include) {
+                    //ret;
+                } else if (addrem == SearchType.Exclude) {
+                    ret = !ret;
+                }
+
+                if (compose_type == ComposeType.OR && ret == true) {
+                    return true;
+                } else if (compose_type == ComposeType.AND && ret == false) {
+                    return false;
                 }
             }
-        } else {
-            final_tokens.push(
-                [SearchType.Include, Cond.Fuzzy, fuzzy_key, str_token]
-            );
-        }
+
+            return ret;
+        };
+        condition_fns.push(lambda);
     }
+
     //console.log(JSON.stringify(final_tokens));
-    return build_filter_fn_from_tokens(final_tokens);
+    return function (item: any, _index: number, _accum: any[]): any {
+        for (let fn of condition_fns) {
+            if (fn(item) == false) {
+                return false;
+            }
+        }
+        return true;
+    };
 };
 
 export {
-    build_fn
+    build_fn,
+    string_to_search_tokens,
+    token_to_english
 };
